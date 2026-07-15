@@ -1,0 +1,7 @@
+.git
+.agents
+.env
+**/bin
+**/obj
+TestResults
+README.md

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\LibraryManagement.DataAccess\LibraryManagement.DataAccess.csproj" />
+  </ItemGroup>
+</Project>
