@@ -6,8 +6,13 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=library_management;Username=library;Password=library
-      Jwt__Secret: ${JWT_SECRET:-jwt-secret-here}
+      Jwt__Secret: ${JWT_SECRET:-local-development-jwt-secret-change-me}
       Jwt__ExpirationMinutes: ${JWT_EXPIRATION_MINUTES:-60}
+      BootstrapAdmin__Username: ${ADMIN_USERNAME:-admin}
+      BootstrapAdmin__Email: ${ADMIN_EMAIL:-admin@library.local}
+      BootstrapAdmin__Password: ${ADMIN_PASSWORD:-ChangeMe12345}
+      BootstrapAdmin__FirstName: ${ADMIN_FIRST_NAME:-System}
+      BootstrapAdmin__LastName: ${ADMIN_LAST_NAME:-Administrator}
     ports:
       - "8080:8080"
     depends_on:
@@ -18,7 +23,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     restart: unless-stopped
 
   postgres:
