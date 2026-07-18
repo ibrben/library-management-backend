@@ -26,6 +26,7 @@ builder.Services.AddDbContext<LibraryDbContext>(options => options.UseNpgsql(con
 builder.Services.AddBusiness();
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<AdministratorSeeder>();
+builder.Services.AddScoped<DevelopmentDataSeeder>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgresql");
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
@@ -82,6 +83,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30)
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    success = false,
+                    message = "Authentication is required.",
+                    errors = new Dictionary<string, string[]>()
+                });
+            },
+            OnForbidden = async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    success = false,
+                    message = "You do not have permission to perform this action.",
+                    errors = new Dictionary<string, string[]>()
+                });
+            }
+        };
     });
 builder.Services.AddAuthorization(options =>
 {
@@ -92,13 +119,16 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
-if (!app.Environment.IsDevelopment())
+if (builder.Configuration.GetValue("Http:UseHttpsRedirection", false))
 {
     app.UseHttpsRedirection();
 }
 
-app.UseSwagger();
-app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");
@@ -107,8 +137,13 @@ app.MapControllers();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<LibraryDbContext>();
-    await dbContext.Database.MigrateAsync();
+    if (builder.Configuration.GetValue("Database:ApplyMigrationsOnStartup", false))
+    {
+        await dbContext.Database.MigrateAsync();
+    }
+
     await scope.ServiceProvider.GetRequiredService<AdministratorSeeder>().SeedAsync();
+    await scope.ServiceProvider.GetRequiredService<DevelopmentDataSeeder>().SeedAsync();
 }
 
 await app.RunAsync();

@@ -24,6 +24,10 @@ internal sealed partial class GlobalExceptionMiddleware(RequestDelegate next, IL
                 (StatusCodes.Status400BadRequest, validation.Message, validation.Errors),
             UnauthorizedException unauthorized =>
                 (StatusCodes.Status401Unauthorized, unauthorized.Message, EmptyErrors()),
+            ForbiddenException forbidden =>
+                (StatusCodes.Status403Forbidden, forbidden.Message, EmptyErrors()),
+            NotFoundException notFound =>
+                (StatusCodes.Status404NotFound, notFound.Message, EmptyErrors()),
             ConflictException conflict =>
                 (StatusCodes.Status409Conflict, conflict.Message, EmptyErrors()),
             _ =>

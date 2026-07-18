@@ -14,13 +14,28 @@ internal sealed partial class AdministratorSeeder(
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
         var section = configuration.GetSection("BootstrapAdmin");
+        if (!section.GetValue("Enabled", false))
+        {
+            LogBootstrapAdminDisabled(logger);
+            return;
+        }
+
         var username = section["Username"]?.Trim().ToLowerInvariant();
         var email = section["Email"]?.Trim().ToLowerInvariant();
         var password = section["Password"];
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         {
-            LogBootstrapAdminNotConfigured(logger);
-            return;
+            throw new InvalidOperationException(
+                "BootstrapAdmin username, email, and password are required when bootstrap creation is enabled.");
+        }
+
+        if (password.Length < 12 ||
+            !password.Any(char.IsUpper) ||
+            !password.Any(char.IsLower) ||
+            !password.Any(char.IsDigit))
+        {
+            throw new InvalidOperationException(
+                "BootstrapAdmin:Password must be at least 12 characters and contain uppercase, lowercase, and a digit.");
         }
 
         if (await dbContext.Users.AnyAsync(user => user.Role == UserRole.Administrator, cancellationToken))
@@ -45,8 +60,8 @@ internal sealed partial class AdministratorSeeder(
         LogBootstrapAdminCreated(logger, username);
     }
 
-    [LoggerMessage(LogLevel.Warning, "Bootstrap administrator was not configured; no initial account was created.")]
-    private static partial void LogBootstrapAdminNotConfigured(ILogger logger);
+    [LoggerMessage(LogLevel.Debug, "Bootstrap administrator creation is disabled.")]
+    private static partial void LogBootstrapAdminDisabled(ILogger logger);
 
     [LoggerMessage(LogLevel.Information, "Created bootstrap administrator {Username}.")]
     private static partial void LogBootstrapAdminCreated(ILogger logger, string username);
