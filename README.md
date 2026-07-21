@@ -1,4 +1,4 @@
-# Library Management Backend
+# Library Management Backend (Archelik Hitachi test)
 
 .NET 8 backend for library inventory, authentication, borrowing, returns, and
 transaction history. It follows a three-tier dependency direction.
@@ -14,8 +14,32 @@ tests/
   LibraryManagement.Business.UnitTests/
 ```
 
-Dependencies flow from `Api` to `Business` to `DataAccess`. A layer must not
-reference a layer above it.
+Dependencies flow from `Api` to `Business` to `DataAccess`. 
+
+## Using of AI Assistance
+*First AI Used for initiate project structure.*
+### Prompt
+```
+Initiate API with three-tier architecture using dotnet framework 8.0 with following context
+- Library management system.
+- Init JWT Authentication
+- Controller contain : BooksController, UsersController, Borrow/Return Controller
+- Implement exception handler
+- Use Postgresql for Database, work with entity framework
+- Add data seeder mechanism for development phase
+- Make application containerized and provision docker-compose file
+```
+*Right after I got the result, generated project structure are so minimal, compact. But it also not so clean and hard to understand, Then I remove and re-create it again*
+### Prompt
+```
+Generate project structure with three-tier architecture using dotnet framework 8, prepare package for postgresql connecting. Leave room for implementation empty for developer.
+```
+*then I keep adding controller one-by-one, after finish Controller and endpoint structuring, interfaces and implementation. AI also be my assistance on doing dependencies injection*
+### Prompt
+```
+With interface and implementation done in "LibraryManagement.Business" assist me to implement dependencies injection in practical ways
+```
+**I also use AI Assistance on much more part, such as implement database connection, and also data seeding*
 
 ## Run locally
 
@@ -27,12 +51,7 @@ dotnet test
 dotnet run --project src/LibraryManagement.Api
 ```
 
-The local launch profile sets `ASPNETCORE_ENVIRONMENT=Development` and serves the
-API at <http://localhost:5080>. This causes `appsettings.Development.json` to load
-after `appsettings.json`. The health endpoint is available at `/health` and verifies
-PostgreSQL connectivity.
-
-For the non-containerized API workflow, first start PostgreSQL with the local
+But for the non-containerized API workflow, first start PostgreSQL with the local
 port override, then run the API:
 
 ```bash
@@ -40,18 +59,7 @@ docker compose -f compose.yaml -f compose.local-db.yaml up -d postgres
 dotnet run --project src/LibraryManagement.Api
 ```
 
-The override publishes PostgreSQL on `localhost:5433`, avoiding the conventional
-host port `5432`, which is commonly occupied by another PostgreSQL installation.
-Development configuration applies migrations and idempotently creates sample data.
-The regular `docker compose up` workflow still keeps PostgreSQL private to its
-Docker network.
-
-Running with `--no-launch-profile` intentionally skips this profile. In that case,
-set the environment explicitly:
-
-```bash
-ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/LibraryManagement.Api --no-launch-profile
-```
+Or
 
 ## Run with Docker Compose
 
@@ -73,14 +81,15 @@ administrator exists:
 - Username: `admin`
 - Password: `Admin54321Dev`
 
-Override all development credentials through `.env`; never use the defaults in
-a shared or production environment. Stop the services with:
+Override all development credentials through `.env`;
+
+Stop the services with:
 
 ```bash
 docker compose down
 ```
 
-Use `docker compose down --volumes` only when you intentionally want to remove
+Use `docker compose down --volumes` if you intentionally want to remove
 the local database data.
 
 ### Sample data for local development
@@ -112,12 +121,6 @@ docker compose up --build
 Sample seeding is disabled in the base application configuration and is enabled
 explicitly by `compose.yaml`, preventing accidental sample accounts in other
 deployment environments.
-
-To inspect the local database without publishing PostgreSQL, use:
-
-```bash
-docker compose exec postgres psql -U library -d library_management
-```
 
 ## Production configuration
 
@@ -158,14 +161,6 @@ so wildcard CORS remains compatible with the current authentication design. For
 production, prefer an explicit origin allowlist and set `ALLOWED_HOSTS` to the API's
 actual public and internal hostnames.
 
-## Tests
-
-```bash
-dotnet test --collect:"XPlat Code Coverage"
-```
-
-Add unit-test projects alongside the layer they exercise as the system grows.
-
 ## Authentication
 
 Log in with either a username or email:
@@ -199,6 +194,51 @@ The initial migration creates `Users`, `Books`, and `BorrowTransactions`, with
 unique indexes for usernames, email addresses, and ISBNs, plus restricted foreign
 keys that protect transaction history.
 
+```mermaid
+erDiagram
+    Users ||--o{ BorrowTransactions : borrows
+    Books ||--o{ BorrowTransactions : appears_in
+
+    Users {
+        uuid Id PK
+        string Username UK
+        string Email UK
+        string PasswordHash
+        string FirstName
+        string LastName
+        string Role "Administrator, Librarian, EndUser"
+        datetime CreatedAt
+        datetime UpdatedAt
+    }
+
+    Books {
+        uuid Id PK
+        string ISBN UK
+        string Title
+        string Author
+        string Publisher "nullable"
+        int PublicationYear "nullable"
+        string Category "nullable"
+        string Shelf
+        string AvailabilityStatus "Available, Borrowed"
+        datetime CreatedAt
+        datetime UpdatedAt
+    }
+
+    BorrowTransactions {
+        uuid Id PK
+        uuid UserId FK
+        uuid BookId FK
+        datetime BorrowDate
+        datetime DueDate "nullable"
+        datetime ReturnDate "nullable"
+        string Status "Borrowed, Returned"
+    }
+```
+
+Each user and book can have many historical borrowing transactions. Both foreign
+keys use restricted deletion so transaction history cannot be orphaned.
+
 ## Book inventory
 
 Book reads and searches are public. Creating, updating, and deleting books requires
@@ -231,8 +271,3 @@ history; librarians can use the same endpoint with a required end-user `userId`.
 | `GET` | `/api/borrowings/{transactionId}` | Owner, Administrator, or Librarian |
 | `GET` | `/api/borrowings/mine` | Authenticated user's history |
 | `GET` | `/api/borrowings` | Administrator global history; Librarian with an end-user `userId` |
-
-History supports `status` (`Borrowed` or `Returned`), `page`, and `pageSize`.
-Global history additionally supports `userId`. Borrowing checks and updates book
-availability, records the borrower and optional future `dueDate`, and returning
-records the UTC return date and makes the book available again.
