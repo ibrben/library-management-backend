@@ -27,7 +27,31 @@ dotnet test
 dotnet run --project src/LibraryManagement.Api
 ```
 
-The health endpoint is available at `/health` and verifies PostgreSQL connectivity.
+The local launch profile sets `ASPNETCORE_ENVIRONMENT=Development` and serves the
+API at <http://localhost:5080>. This causes `appsettings.Development.json` to load
+after `appsettings.json`. The health endpoint is available at `/health` and verifies
+PostgreSQL connectivity.
+
+For the non-containerized API workflow, first start PostgreSQL with the local
+port override, then run the API:
+
+```bash
+docker compose -f compose.yaml -f compose.local-db.yaml up -d postgres
+dotnet run --project src/LibraryManagement.Api
+```
+
+The override publishes PostgreSQL on `localhost:5433`, avoiding the conventional
+host port `5432`, which is commonly occupied by another PostgreSQL installation.
+Development configuration applies migrations and idempotently creates sample data.
+The regular `docker compose up` workflow still keeps PostgreSQL private to its
+Docker network.
+
+Running with `--no-launch-profile` intentionally skips this profile. In that case,
+set the environment explicitly:
+
+```bash
+ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/LibraryManagement.Api --no-launch-profile
+```
 
 ## Run with Docker Compose
 
@@ -47,7 +71,7 @@ For local development, Compose creates an initial administrator when no
 administrator exists:
 
 - Username: `admin`
-- Password: `ChangeMe12345`
+- Password: `Admin54321Dev`
 
 Override all development credentials through `.env`; never use the defaults in
 a shared or production environment. Stop the services with:
@@ -68,7 +92,7 @@ unchanged, so restarting the stack does not duplicate data.
 
 | Role | Username | Password |
 | --- | --- | --- |
-| Administrator | `admin` | `ChangeMe12345` |
+| Administrator | `admin` | `Admin54321Dev` |
 | Librarian | `librarian` | `Librarian12345` |
 | End User | `member` | `Member123456` |
 
@@ -111,6 +135,29 @@ TLS should normally terminate at the ingress or reverse proxy; enable
 the original HTTPS scheme. Never set `SeedData__Enabled=true` outside the
 `Development` environment—the application rejects that configuration at startup.
 
+## Hosts and CORS
+
+HTTP host filtering and browser CORS are configured independently:
+
+- `ALLOWED_HOSTS` controls accepted HTTP `Host` headers. Separate multiple hosts
+  with semicolons, for example `api.example.com;internal-api.example.com`.
+- `CORS_ALLOWED_ORIGINS` controls which browser origins receive CORS headers.
+  Separate origins with commas or semicolons, for example
+  `https://app.example.com,https://admin.example.com`.
+
+For local Docker development, edit `.env` and apply the change:
+
+```bash
+docker compose up -d --force-recreate backend
+```
+
+Origins must include the scheme and optional port, with no path or trailing slash.
+Set `CORS_ALLOWED_ORIGINS=*` only when intentionally allowing every browser origin.
+This API uses bearer tokens and does not enable credentialed cross-origin cookies,
+so wildcard CORS remains compatible with the current authentication design. For
+production, prefer an explicit origin allowlist and set `ALLOWED_HOSTS` to the API's
+actual public and internal hostnames.
+
 ## Tests
 
 ```bash
@@ -126,7 +173,7 @@ Log in with either a username or email:
 ```bash
 curl --request POST http://localhost:8080/api/auth/login \
   --header 'Content-Type: application/json' \
-  --data '{"usernameOrEmail":"admin","password":"ChangeMe12345"}'
+  --data '{"usernameOrEmail":"admin","password":"Admin54321Dev"}'
 ```
 
 Use the returned access token as `Authorization: Bearer <token>`. The following
@@ -137,9 +184,14 @@ endpoints are available:
 | `POST` | `/api/auth/login` | Anonymous |
 | `POST` | `/api/auth/register` | Administrator only |
 | `GET` | `/api/auth/me` | Authenticated users |
+| `GET` | `/api/users/end-users` | Administrator or Librarian |
 
 Registration supports the roles `Administrator`, `Librarian`, and `EndUser`.
 Passwords are stored only as bcrypt hashes.
+
+The end-user list returns each end user's `id` and `username`, ordered by username,
+so authorized staff can select a borrower and pass the corresponding `userId` to
+the borrowing endpoint.
 
 ## Database schema
 
@@ -169,8 +221,8 @@ with an active borrowing cannot be deleted.
 
 All borrowing endpoints require a bearer token. Administrators and librarians can
 borrow or return on behalf of any user. End users can borrow and return only their
-own books and can only view their own history. Global history is restricted to
-administrators.
+own books and can only view their own history. Administrators can view global
+history; librarians can use the same endpoint with a required end-user `userId`.
 
 | Method | Endpoint | Access |
 | --- | --- | --- |
@@ -178,7 +230,7 @@ administrators.
 | `POST` | `/api/borrowings/{transactionId}/return` | Owner, Administrator, or Librarian |
 | `GET` | `/api/borrowings/{transactionId}` | Owner, Administrator, or Librarian |
 | `GET` | `/api/borrowings/mine` | Authenticated user's history |
-| `GET` | `/api/borrowings` | Administrator global history |
+| `GET` | `/api/borrowings` | Administrator global history; Librarian with an end-user `userId` |
 
 History supports `status` (`Borrowed` or `Returned`), `page`, and `pageSize`.
 Global history additionally supports `userId`. Borrowing checks and updates book

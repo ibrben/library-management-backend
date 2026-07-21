@@ -74,13 +74,22 @@ public sealed class BorrowingsController(IBorrowingService borrowingService) : C
         Ok(await borrowingService.GetHistoryAsync(
             request.ToQuery(GetActorId()), cancellationToken));
 
-    [Authorize(Roles = nameof(UserRole.Administrator))]
+    [Authorize(Policy = "InventoryManagement")]
     [HttpGet]
     [ProducesResponseType<TransactionPage>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TransactionPage>> GetGlobal(
         [FromQuery] GlobalTransactionHistoryRequest request,
-        CancellationToken cancellationToken) =>
-        Ok(await borrowingService.GetHistoryAsync(request.ToQuery(), cancellationToken));
+        CancellationToken cancellationToken)
+    {
+        var query = request.ToQuery();
+        var result = User.IsInRole(nameof(UserRole.Administrator))
+            ? await borrowingService.GetHistoryAsync(query, cancellationToken)
+            : await borrowingService.GetEndUserHistoryAsync(query, cancellationToken);
+        return Ok(result);
+    }
 
     private Guid GetActorId()
     {

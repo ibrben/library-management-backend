@@ -21,6 +21,32 @@ var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<Jw
     ?? throw new InvalidOperationException("Jwt configuration is required.");
 jwtOptions.Validate();
 
+var corsOriginsValue = builder.Configuration["Cors:AllowedOrigins"];
+var corsOrigins = !string.IsNullOrWhiteSpace(corsOriginsValue)
+    ? corsOriginsValue.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    : builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+corsOrigins = corsOrigins
+    .Select(origin => origin == "*" ? origin : origin.TrimEnd('/'))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray();
+foreach (var origin in corsOrigins.Where(origin => origin != "*"))
+{
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
+        (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
+        uri.AbsolutePath != "/" ||
+        !string.IsNullOrEmpty(uri.Query) ||
+        !string.IsNullOrEmpty(uri.Fragment))
+    {
+        throw new InvalidOperationException(
+            $"Cors:AllowedOrigins contains invalid origin '{origin}'. Use an HTTP(S) origin without a path, query, or fragment.");
+    }
+}
+
+if (corsOrigins.Contains("*") && corsOrigins.Length > 1)
+{
+    throw new InvalidOperationException("Cors:AllowedOrigins cannot combine '*' with explicit origins.");
+}
+
 builder.Services.AddSingleton(jwtOptions);
 builder.Services.AddDbContext<LibraryDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddBusiness();
@@ -28,6 +54,19 @@ builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
 builder.Services.AddScoped<AdministratorSeeder>();
 builder.Services.AddScoped<DevelopmentDataSeeder>();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgresql");
+builder.Services.AddCors(options => options.AddPolicy("Frontend", policy =>
+{
+    if (corsOrigins.Contains("*"))
+    {
+        policy.AllowAnyOrigin();
+    }
+    else if (corsOrigins.Length > 0)
+    {
+        policy.WithOrigins(corsOrigins);
+    }
+
+    policy.AllowAnyHeader().AllowAnyMethod();
+}));
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
     .ConfigureApiBehaviorOptions(options =>
@@ -129,6 +168,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealthChecks("/health");

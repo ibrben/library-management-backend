@@ -147,6 +147,31 @@ internal sealed partial class BorrowingService(
             totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)query.PageSize));
     }
 
+    public async Task<TransactionPage> GetEndUserHistoryAsync(
+        TransactionQuery query,
+        CancellationToken cancellationToken)
+    {
+        if (!query.UserId.HasValue || query.UserId.Value == Guid.Empty)
+        {
+            throw new ValidationException("Transaction query validation failed.", new Dictionary<string, string[]>
+            {
+                [nameof(query.UserId)] = ["An end-user identifier is required for librarian access."]
+            });
+        }
+
+        var role = await dbContext.Users.AsNoTracking()
+            .Where(user => user.Id == query.UserId.Value)
+            .Select(user => (UserRole?)user.Role)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new NotFoundException($"User '{query.UserId.Value}' was not found.");
+        if (role != UserRole.EndUser)
+        {
+            throw new ForbiddenException("Librarians may only view borrowing history for end users.");
+        }
+
+        return await GetHistoryAsync(query, cancellationToken);
+    }
+
     public async Task<BorrowTransactionResult> GetAsync(
         Guid transactionId,
         Guid actorId,

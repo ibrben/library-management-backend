@@ -1,6 +1,7 @@
 using LibraryManagement.Business.Authentication;
 using LibraryManagement.Business.Books;
 using LibraryManagement.Business.Borrowings;
+using LibraryManagement.Business.Users;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LibraryManagement.Business;
@@ -11,5 +12,6 @@ public static class DependencyInjection
         .AddScoped<IPasswordService, PasswordService>()
         .AddScoped<IAuthenticationService, AuthenticationService>()
         .AddScoped<IBookService, BookService>()
-        .AddScoped<IBorrowingService, BorrowingService>();
+        .AddScoped<IBorrowingService, BorrowingService>()
+        .AddScoped<IUserService, UserService>();
 }

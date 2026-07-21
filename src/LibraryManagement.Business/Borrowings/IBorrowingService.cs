@@ -21,4 +21,8 @@ public interface IBorrowingService
     Task<TransactionPage> GetHistoryAsync(
         TransactionQuery query,
         CancellationToken cancellationToken);
+
+    Task<TransactionPage> GetEndUserHistoryAsync(
+        TransactionQuery query,
+        CancellationToken cancellationToken);
 }
